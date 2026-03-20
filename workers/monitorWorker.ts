@@ -1,6 +1,7 @@
 import { Worker } from "bullmq";
 import Api from "../models/Api";
 import axios from "axios";
+import ApiLog from "../models/ApiLog";
 
 export const monitorWorker = new Worker(
     "monitor-queue",
@@ -12,6 +13,9 @@ export const monitorWorker = new Worker(
         for (const api of apis) {
             const startTime = Date.now();
 
+            let status = "DOWN";
+            let responseTime = 0;
+
             try {
                 await axios({
                     url: api.url,
@@ -19,14 +23,22 @@ export const monitorWorker = new Worker(
                     timeout: 5000,
                 });
 
-                api.status = "UP";
-                api.responseTime = Date.now() - startTime;
+                status = "UP";
+                responseTime = Date.now() - startTime;
             } catch (error) {
-                api.status = "DOWN";
-                api.responseTime = Date.now() - startTime;
+                status = "DOWN";
+                responseTime = Date.now() - startTime;
             }
 
+            api.status = status;
+            api.responseTime = responseTime;
             await api.save();
+
+            await ApiLog.create({
+                api: api._id,
+                status,
+                responseTime,
+            });
         }
 
         return { success: true };

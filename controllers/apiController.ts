@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import Api from "../models/Api";
+import ApiLog from "../models/ApiLog";
 import axios from "axios";
 
 // @route POST /api/apis
@@ -75,6 +76,32 @@ export const checkApiStatus = async (req: Request, res: Response) => {
         }
     } catch (error) {
         console.error("Check API Error:", error);
+        res.status(500).json({ message: "Server Error" });
+    }
+};
+
+// @route GET /api/apis/:id/logs
+export const getApiLogs = async (req: Request, res: Response) => {
+    try {
+        const apiId = req.params.id;
+
+        const api = await Api.findById(apiId);
+
+        if (!api) {
+            return res.status(404).json({ message: "API not found" });
+        }
+
+        if (api.user.toString() !== req.user!._id.toString()) {
+            return res.status(401).json({ message: "Not authorized" });
+        }
+
+        const logs = await ApiLog.find({ api: apiId })
+            .sort({ createdAt: -1 })
+            .limit(20);
+
+        res.json(logs);
+    } catch (error) {
+        console.error("Get Logs Error:", error);
         res.status(500).json({ message: "Server Error" });
     }
 };
