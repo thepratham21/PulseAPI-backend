@@ -177,3 +177,95 @@ export const stopMonitoring = async (req: Request, res: Response) => {
         res.status(500).json({ message: "Server Error" });
     }
 };
+
+// @route GET /api/apis/:id/uptime?range=24h|7d
+export const getApiUptime = async (req: Request, res: Response) => {
+    try {
+        const apiId = req.params.id;
+        const { range } = req.query;
+
+        const api = await Api.findById(apiId);
+
+        if (!api) {
+            return res.status(404).json({ message: "API not found" });
+        }
+
+        if (api.user.toString() !== req.user!._id.toString()) {
+            return res.status(401).json({ message: "Not authorized" });
+        }
+
+        let timeFilter = {};
+
+        if (range === "24h") {
+            timeFilter = {
+                createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+            };
+        } else if (range === "7d") {
+            timeFilter = {
+                createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+            };
+        }
+
+        const totalChecks = await ApiLog.countDocuments({
+            api: apiId,
+            ...timeFilter,
+        });
+
+        if (totalChecks === 0) {
+            return res.json({ uptime: 0, range });
+        }
+
+        const successChecks = await ApiLog.countDocuments({
+            api: apiId,
+            status: "UP",
+            ...timeFilter,
+        });
+
+        const uptime = (successChecks / totalChecks) * 100;
+
+        res.json({
+            uptime: uptime.toFixed(2),
+            totalChecks,
+            successChecks,
+            range: range || "lifetime",
+        });
+    } catch (error) {
+        console.error("Uptime Error:", error);
+        res.status(500).json({ message: "Server Error" });
+    }
+};
+
+// @route GET /api/apis/:id/history
+export const getApiHistory = async (req: Request, res: Response) => {
+    try {
+        const apiId = req.params.id;
+
+        const api = await Api.findById(apiId);
+
+        if (!api) {
+            return res.status(404).json({ message: "API not found" });
+        }
+
+        if (api.user.toString() !== req.user!._id.toString()) {
+            return res.status(401).json({ message: "Not authorized" });
+        }
+
+        // Last 24 hours filter
+        const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+        const logs = await ApiLog.find({
+            api: apiId,
+            createdAt: { $gte: last24Hours },
+        })
+            .sort({ createdAt: 1 }) // oldest → newest (important for graphs)
+            .select("status responseTime createdAt"); // only needed fields
+
+        res.json({
+            count: logs.length,
+            logs,
+        });
+    } catch (error) {
+        console.error("History Error:", error);
+        res.status(500).json({ message: "Server Error" });
+    }
+};
