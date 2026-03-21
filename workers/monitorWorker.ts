@@ -1,49 +1,48 @@
 import { Worker } from "bullmq";
 import Api from "../models/Api";
-import axios from "axios";
 import ApiLog from "../models/ApiLog";
+import axios from "axios";
 
 export const monitorWorker = new Worker(
     "monitor-queue",
     async (job) => {
-        console.log("Processing API monitoring job");
+        const { apiId } = job.data;
 
-        const apis = await Api.find();
+        const api = await Api.findById(apiId);
 
-        for (const api of apis) {
-            const startTime = Date.now();
+        if (!api) return;
 
-            let status = "DOWN";
-            let responseTime = 0;
+        const startTime = Date.now();
 
-            try {
-                await axios({
-                    url: api.url,
-                    method: api.method as any,
-                    timeout: 5000,
-                });
+        let status = "DOWN";
+        let responseTime = 0;
 
-                status = "UP";
-                responseTime = Date.now() - startTime;
-            } catch (error) {
-                status = "DOWN";
-                responseTime = Date.now() - startTime;
-            }
-
-            api.status = status;
-            api.responseTime = responseTime;
-            await api.save();
-
-            await ApiLog.create({
-                api: api._id,
-                status,
-                responseTime,
+        try {
+            await axios({
+                url: api.url,
+                method: api.method as any,
+                timeout: 5000,
             });
+
+            status = "UP";
+            responseTime = Date.now() - startTime;
+        } catch (error) {
+            status = "DOWN";
+            responseTime = Date.now() - startTime;
         }
 
-        return { success: true };
-    },
+        api.status = status;
+        api.responseTime = responseTime;
+        await api.save();
 
+        await ApiLog.create({
+            api: api._id,
+            status,
+            responseTime,
+        });
+
+        console.log(`Checked API: ${api.name}`);
+    },
     {
         connection: {
             host: "127.0.0.1",

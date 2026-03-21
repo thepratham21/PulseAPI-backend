@@ -7,6 +7,7 @@ export interface IApi extends Document {
     user: mongoose.Types.ObjectId;
     status: string;
     responseTime: number;
+    isMonitoring: boolean;
 }
 
 const apiSchema = new Schema(
@@ -36,6 +37,10 @@ const apiSchema = new Schema(
         responseTime: {
             type: Number,
             default: 0,
+        },
+        isMonitoring: {
+            type: Boolean,
+            default: false,
         },
     },
     { timestamps: true }

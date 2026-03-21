@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import Api from "../models/Api";
 import ApiLog from "../models/ApiLog";
 import axios from "axios";
+import { monitorQueue } from "../queues/monitorQueue";
 
 // @route POST /api/apis
 export const createApi = async (req: Request, res: Response) => {
@@ -102,6 +103,77 @@ export const getApiLogs = async (req: Request, res: Response) => {
         res.json(logs);
     } catch (error) {
         console.error("Get Logs Error:", error);
+        res.status(500).json({ message: "Server Error" });
+    }
+};
+
+// @route POST /api/apis/:id/start
+export const startMonitoring = async (req: Request, res: Response) => {
+    try {
+        const api = await Api.findById(req.params.id);
+
+        if (!api) {
+            return res.status(404).json({ message: "API not found" });
+        }
+
+        if (api.user.toString() !== req.user!._id.toString()) {
+            return res.status(401).json({ message: "Not authorized" });
+        }
+
+        if (api.isMonitoring) {
+            return res.status(400).json({ message: "Already monitoring" });
+        }
+
+        // Add repeatable job
+        await monitorQueue.add(
+            "monitor-api",
+            { apiId: api._id },
+            {
+                jobId: `monitor-${api._id}`, // unique job
+                repeat: {
+                    every: 30000, // 30 sec
+                },
+            }
+        );
+
+        api.isMonitoring = true;
+        await api.save();
+
+        res.json({ message: "Monitoring started" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Server Error" });
+    }
+};
+
+// @route POST /api/apis/:id/stop
+export const stopMonitoring = async (req: Request, res: Response) => {
+    try {
+        const api = await Api.findById(req.params.id);
+
+        if (!api) {
+            return res.status(404).json({ message: "API not found" });
+        }
+
+        if (api.user.toString() !== req.user!._id.toString()) {
+            return res.status(401).json({ message: "Not authorized" });
+        }
+
+        // Remove job
+        await monitorQueue.removeRepeatable(
+            "monitor-api",
+            {
+                every: 30000,
+            },
+            `monitor-${api._id}`
+        );
+
+        api.isMonitoring = false;
+        await api.save();
+
+        res.json({ message: "Monitoring stopped" });
+    } catch (error) {
+        console.error(error);
         res.status(500).json({ message: "Server Error" });
     }
 };
