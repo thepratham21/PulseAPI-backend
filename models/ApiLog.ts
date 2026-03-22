@@ -4,6 +4,8 @@ export interface IApiLog extends Document {
     api: mongoose.Types.ObjectId;
     status: string;
     responseTime: number;
+    createdAt: Date;
+    updatedAt: Date;
 }
 
 const apiLogSchema = new Schema(
